@@ -1,7 +1,7 @@
 # KOCHSNOWFLAKE | FRACTALPLANT | PROBABILISTIC
 CLASS = KOCHSNOWFLAKE
 
-CFLAGS = -O2 -D$(CLASS) -g
+CFLAGS = -Wall -Werror -std=c99 -pedantic -O2 -D$(CLASS)
 LIBS = -lm -lSDL3
 TARGET = animation
 

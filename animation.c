@@ -41,18 +41,24 @@ static struct node *first;
 #ifdef KOCHSNOWFLAKE
 static float x, y = WINDOW_HEIGHT * 8 / 9;
 static int angle;
+static int r = 255, g = 255, b = 255;
 #elif FRACTALPLANT
 static float x = WINDOW_WIDTH / 9, y = WINDOW_HEIGHT;
 static int angle = 60;
+static int r, g = 200, b;
 #elif PROBABILISTIC
 static float x = WINDOW_WIDTH / 2, y = WINDOW_HEIGHT;
 static int angle = 90;
+static int r = 255, g = 165, b;
 #endif
 
+static float sum;
+
 #if defined(FRACTALPLANT) || defined(PROBABILISTIC)
+
 struct state {
 	float x, y;
-	int angle;
+	int angle, r, g, b;
 };
 struct {
 	int pointer;
@@ -73,6 +79,9 @@ static void stack_push()
 	stack->data[stack->pointer].x = x;
 	stack->data[stack->pointer].y = y;
 	stack->data[stack->pointer].angle = angle;
+	stack->data[stack->pointer].r = r;
+	stack->data[stack->pointer].g = g;
+	stack->data[stack->pointer].b = b;
 	stack->pointer ++;
 }
 
@@ -82,24 +91,26 @@ static void stack_pop()
 	x     = stack->data[stack->pointer].x;
 	y     = stack->data[stack->pointer].y;
 	angle = stack->data[stack->pointer].angle;
+	r = stack->data[stack->pointer].r;
+	g = stack->data[stack->pointer].g;
+	b = stack->data[stack->pointer].b;
 }
 
 #endif
 
-static float sum;
 static bool line_complete = true;
 static bool is_complete = false;
 
 #define FLOAT_EQUAL(f1, f2) (fabs((f1)-(f2)) < 0.0001f)
 
-static void print()
-{
-	for (struct node *n = first; n != NULL; n = n->next)
-		putchar(n->c);
-	puts("");
-}
+/* static void print(void) */
+/* { */
+/* 	for (struct node *n = first; n != NULL; n = n->next) */
+/* 		putchar(n->c); */
+/* 	puts(""); */
+/* } */
 
-static void draw_line()
+static void draw_line(void)
 {
 	if (sum >= 1.f) {
 		line_complete = true;
@@ -109,6 +120,8 @@ static void draw_line()
 	float rad = angle / 180.f * PI;
 	float nx =  x + LINE_LEN * elapsed * cosf(rad);
 	float ny =  y - LINE_LEN * elapsed * sinf(rad);
+
+	SDL_SetRenderDrawColor(renderer, r, g, b, SDL_ALPHA_OPAQUE);
 
 	SDL_RenderLine(renderer, x, y, nx, ny);
 
@@ -120,7 +133,7 @@ static void draw_line()
 
 #ifdef KOCHSNOWFLAKE
 
-static int koch_snowflake_draw()
+static int koch_snowflake_draw(void)
 {
 	struct node *prev;
 
@@ -222,7 +235,7 @@ static void koch_snowflake_construct(int x)
 
 #elif FRACTALPLANT
 
-static int fractal_plant_draw()
+static int fractal_plant_draw(void)
 {
 	struct node *prev;
 
@@ -381,12 +394,35 @@ static void fractal_plant_construct(int x)
 
 #elif PROBABILISTIC
 
-static int probabilistic_draw()
+static void update_color(void)
+{
+	static float sum = 0;
+	sum += elapsed;
+
+	if (sum > 0.7f) {
+		r -= 2;
+		g -= 1;
+		b += 2;
+
+		if (r < 0)
+			r = 0;
+		if (g < 0)
+			g = 0;
+		if (b > 255)
+			b = 255;
+
+		sum = 0.f;
+	}
+}
+
+
+static int probabilistic_draw(void)
 {
 	struct node *prev;
 
 	SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
 	if (!line_complete) {
+		update_color();
 		draw_line();
 		return 0;
 	} else {
@@ -394,7 +430,7 @@ static int probabilistic_draw()
 			return 1;
 		switch (first->c) {
 		case 'F':
-			line_complete = false; draw_line(); break;
+			update_color(); line_complete = false; draw_line(); break;
 		case '+':
 			angle += 25; break;
 		case '-':
