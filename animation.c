@@ -3,9 +3,7 @@
 #include <signal.h>
 #include <math.h>
 
-#ifdef PROBABILISTIC
 #include <time.h>
-#endif
 
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
@@ -38,23 +36,13 @@ struct node {
 };
 
 static struct node *first;
-#ifdef KOCHSNOWFLAKE
-static float x, y = WINDOW_HEIGHT * 8 / 9;
+static float x, y;
 static int angle;
-static int r = 255, g = 255, b = 255;
-#elif FRACTALPLANT
-static float x = WINDOW_WIDTH / 9, y = WINDOW_HEIGHT;
-static int angle = 60;
-static int r, g = 200, b;
-#elif PROBABILISTIC
-static float x = WINDOW_WIDTH / 2, y = WINDOW_HEIGHT;
-static int angle = 90;
-static int r = 255, g = 165, b;
-#endif
-
+static int r, g, b;
 static float sum;
 
-#if defined(FRACTALPLANT) || defined(PROBABILISTIC)
+static int iterate_times;
+static int run_class;
 
 struct state {
 	float x, y;
@@ -96,19 +84,120 @@ static void stack_pop()
 	b = stack->data[stack->pointer].b;
 }
 
-#endif
-
-static bool line_complete = true;
-static bool is_complete = false;
+static bool line_complete;
+static bool is_completed;
 
 #define FLOAT_EQUAL(f1, f2) (fabs((f1)-(f2)) < 0.0001f)
 
-/* static void print(void) */
-/* { */
-/* 	for (struct node *n = first; n != NULL; n = n->next) */
-/* 		putchar(n->c); */
-/* 	puts(""); */
-/* } */
+static void print(void)
+{
+	for (struct node *n = first; n != NULL; n = n->next)
+		putchar(n->c);
+	puts("");
+}
+
+static bool show_bg;
+
+#define NUM_POINTS 200
+#define CENTERX (WINDOW_WIDTH  / 2)
+#define CENTERY (WINDOW_HEIGHT / 2)
+#define RADIUS 20
+
+#define random_float(min, max) (((float)rand()/(float)RAND_MAX) * ((max)-(min)) + (min))
+
+static SDL_FPoint points[NUM_POINTS];
+static float point_directionx[NUM_POINTS];
+static float point_directiony[NUM_POINTS];
+
+static bool sdf_circle(float x, float y)
+{
+	float diffx = x - (float)CENTERX;
+	float diffy = y - (float)CENTERY;
+
+	return diffx*diffx + diffy*diffy < RADIUS*RADIUS;
+}
+
+static void set_point_out_of_screen(i)
+	int i;
+{
+	points[i].x = -1.f;
+	points[i].y = -1.f;
+}
+
+static void set_point_in_circle(int i)
+{
+	float x;
+	float y;
+
+	if (rand() % 800 != 0) {
+		set_point_out_of_screen(i);
+		return;
+	}
+
+retry:
+	x = random_float(CENTERX - RADIUS, CENTERX + RADIUS);
+	y = random_float(CENTERY - RADIUS, CENTERY + RADIUS);
+	if (!sdf_circle(x, y))
+		goto retry;
+
+	points[i].x = x;
+	points[i].y = y;
+
+	point_directionx[i] = (x - CENTERX) > 0.f ? random_float(0.f, 1.f) : -random_float(0.f, 1.f);
+	point_directiony[i] = (y - CENTERY) > 0.f ? random_float(0.f, 1.f) : -random_float(0.f, 1.f);
+}
+
+static float point_distance(int i)
+{
+	float a = points[i].x-(float)CENTERX;
+	float b = points[i].y-(float)CENTERY;
+	return sqrt(a*a+b*b);
+}
+
+static void update_point_position(int i)
+{
+	const float distance = elapsed * point_distance(i) / 10.f;
+	points[i].x += distance * (distance > 1.f ? distance : 1.f) * point_directionx[i];
+	points[i].y += distance * (distance > 1.f ? distance : 1.f) * point_directiony[i];
+}
+
+static void starfield_construct(void)
+{
+	int i;
+
+	show_bg = true;
+	srand(time(NULL));
+
+	for (i = 0; i < SDL_arraysize(points); ++i)
+		set_point_in_circle(i);
+}
+
+static void starfield_show(void)
+{
+	int i;
+
+	SDL_SetRenderDrawColor(renderer, 0, 0, 30, SDL_ALPHA_OPAQUE);
+	SDL_RenderClear(renderer);
+
+	for (i = 0; i < SDL_arraysize(points); ++i) {
+		update_point_position(i);
+		if (points[i].x >= WINDOW_WIDTH || points[i].x < 0.f ||
+		    points[i].y >= WINDOW_HEIGHT || points[i].y <= 0.f)
+			set_point_in_circle(i);
+	}
+
+	SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+	SDL_RenderPoints(renderer, points, SDL_arraysize(points));
+}
+
+static void clean_screen()
+{
+	show_bg = false;
+	run_class = 0;
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+	SDL_RenderClear(renderer);
+	SDL_RenderPresent(renderer);
+}
 
 static void draw_line(void)
 {
@@ -131,13 +220,10 @@ static void draw_line(void)
 	sum += elapsed;
 }
 
-#ifdef KOCHSNOWFLAKE
-
 static int koch_snowflake_draw(void)
 {
 	struct node *prev;
 
-	SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
 	if (!line_complete) {
 		draw_line();
 		return 0;
@@ -213,16 +299,35 @@ static void koch_snowflake_iterate(struct node *n)
 	}
 }
 
-static void koch_snowflake_construct(int x)
+static void koch_snowflake_construct()
 {
 	int i;
 	struct node *n, *next;
 
+	clean_screen();
+
+	show_bg = false;
+	iterate_times = 4;
+	run_class = 1;
+	x = 0, y = WINDOW_HEIGHT * 8 / 9;
+	angle = 0;
+	r = 255, g = 255, b = 255;
+	line_complete = true,  is_completed = false;
+
+	if (stack)
+		stack->pointer = 0;
+	while (first) {
+		next = first->next;
+		free(first);
+		first = next;
+	}
+
 	first = malloc(sizeof *first);
 	first->c = 'F';
 	first->next = NULL;
+	first->prev = NULL;
 
-	for (i = 0; i < x; ++i) {
+	for (i = 0; i < iterate_times; ++i) {
 		n = first, next = n->next;
 		while (n) {
 			koch_snowflake_iterate(n);
@@ -233,13 +338,10 @@ static void koch_snowflake_construct(int x)
 	}
 }
 
-#elif FRACTALPLANT
-
 static int fractal_plant_draw(void)
 {
 	struct node *prev;
 
-	SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
 	if (!line_complete) {
 		draw_line();
 		return 0;
@@ -372,16 +474,35 @@ static void fractal_plant_iterate(struct node *nn)
 	}
 }
 
-static void fractal_plant_construct(int x)
+static void fractal_plant_construct()
 {
 	int i;
 	struct node *n, *next;
 
+	clean_screen();
+
+	show_bg = false;
+	iterate_times = 5;
+	run_class = 2;
+	x = WINDOW_WIDTH / 9, y = WINDOW_HEIGHT;
+	angle = 60;
+	r = 0, g = 200, b = 0;
+	line_complete = true,  is_completed = false;
+
+	if (stack)
+		stack->pointer = 0;
+	while (first) {
+		next = first->next;
+		free(first);
+		first = next;
+	}
+
 	first = malloc(sizeof *first);
 	first->c = 'X';
 	first->next = NULL;
+	first->prev = NULL;
 
-	for (i = 0; i < x; ++i) {
+	for (i = 0; i < iterate_times; ++i) {
 		n = first, next = n->next;
 		while (n) {
 			fractal_plant_iterate(n);
@@ -391,8 +512,6 @@ static void fractal_plant_construct(int x)
 		}
 	}
 }
-
-#elif PROBABILISTIC
 
 static void update_color(void)
 {
@@ -415,12 +534,10 @@ static void update_color(void)
 	}
 }
 
-
 static int probabilistic_draw(void)
 {
 	struct node *prev;
 
-	SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
 	if (!line_complete) {
 		update_color();
 		draw_line();
@@ -515,43 +632,55 @@ static void probabilistic_iterate(struct node *nn)
 		break;
 	case 1:
 		c->c = '+';
-
 		f->next = nn->next;
-
 		if (nn->next)
 			nn->next->prev = f;
 		break;
 	case 2:
 		c->c = '-';
-
 		f->next = nn->next;
-
 		if (nn->next)
 			nn->next->prev = f;
 		break;
 	}
-
 	if (nn->prev)
 		nn->prev->next = a;
-
 	free(nn);
-
 	if (!a->prev)
 		first = a;
 }
 
-static void probabilistic_construct(int x)
+static void probabilistic_construct()
 {
 	int i;
 	struct node *n, *next;
 
+	clean_screen();
+
+	show_bg = false;
+	iterate_times = 5;
+	run_class = 3;
+	x = WINDOW_WIDTH / 2, y = WINDOW_HEIGHT;
+	angle = 90;
+	r = 255, g = 165, b = 0;
+	line_complete = true,  is_completed = false;
+
 	srand(time(NULL));
+
+	if (stack)
+		stack->pointer = 0;
+	while (first) {
+		next = first->next;
+		free(first);
+		first = next;
+	}
 
 	first = malloc(sizeof *first);
 	first->c = 'F';
 	first->next = NULL;
+	first->prev = NULL;
 
-	for (i = 0; i < x; ++i) {
+	for (i = 0; i < iterate_times; ++i) {
 		n = first, next = n->next;
 		while (n) {
 			probabilistic_iterate(n);
@@ -562,7 +691,172 @@ static void probabilistic_construct(int x)
 	}
 }
 
-#endif
+static int sierpinski_triangle_draw(void)
+{
+	struct node *prev;
+
+	SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+	if (!line_complete) {
+		draw_line();
+		return 0;
+	} else {
+		if (!first)
+			return 1;
+		switch (first->c) {
+		case 'F':
+		case 'G':
+			line_complete = false; draw_line(); break;
+		case '+':
+			angle += 120; break;
+		case '-':
+			angle -= 120; break;
+		default:
+			return 1;
+		}
+		prev = first;
+		first = first->next;
+		free(prev);
+		return 0;
+	}
+}
+
+static void sierpinski_triangle_iterate(struct node *n)
+{
+	struct node *a, *b, *c, *d, *e, *f, *g, *h, *i;
+	if (n->c == 'F') {
+		a = malloc(sizeof(struct node));
+		b = malloc(sizeof(struct node));
+		c = malloc(sizeof(struct node));
+		d = malloc(sizeof(struct node));
+		e = malloc(sizeof(struct node));
+		f = malloc(sizeof(struct node));
+		g = malloc(sizeof(struct node));
+		h = malloc(sizeof(struct node));
+		i = malloc(sizeof(struct node));
+
+		a->c = 'F';
+		b->c = '-';
+		c->c = 'G';
+		d->c = '+';
+		e->c = 'F';
+		f->c = '+';
+		g->c = 'G';
+		h->c = '-';
+		i->c = 'F';
+
+		a->next = b;
+		b->next = c;
+		c->next = d;
+		d->next = e;
+		e->next = f;
+		f->next = g;
+		g->next = h;
+		h->next = i;
+		i->next = n->next;
+
+		a->prev = n->prev;
+		b->prev = a;
+		c->prev = b;
+		d->prev = c;
+		e->prev = d;
+		f->prev = e;
+		g->prev = f;
+		h->prev = g;
+		i->prev = h;
+
+		if (n->next)
+			n->next->prev = i;
+		if (n->prev)
+			n->prev->next = a;
+
+		free(n);
+
+		if (!a->prev)
+			first = a;
+	} else if (n->c == 'G') {
+		a = malloc(sizeof(struct node));
+		b = malloc(sizeof(struct node));
+
+		a->c = 'G';
+		b->c = 'G';
+
+		a->next = b;
+		b->next = n->next;
+
+		a->prev = n->prev;
+		b->prev = a;
+
+		if (n->next)
+			n->next->prev = b;
+		if (n->prev)
+			n->prev->next = a;
+
+		free(n);
+
+		if (!a->prev)
+			first = a;
+	}
+}
+
+static void sierpinski_triangle_construct()
+{
+	int i;
+	struct node *n, *next;
+	struct node *a, *e, *c, *d;
+
+	clean_screen();
+
+	show_bg = false;
+	iterate_times = 6;
+	run_class = 4;
+	x = WINDOW_WIDTH / 2, y = WINDOW_HEIGHT;
+	angle = 120;
+	r = 0, g = 165, b = 165;
+	line_complete = true,  is_completed = false;
+
+	if (stack)
+		stack->pointer = 0;
+
+	while (first) {
+		next = first->next;
+		free(first);
+		first = next;
+	}
+
+	first = malloc(sizeof *first);
+	first->c = 'F';
+
+	a = malloc(sizeof *a);
+	a->c = '-';
+	e = malloc(sizeof *e);
+	e->c = 'G';
+	c = malloc(sizeof *c);
+	c->c = '-';
+	d = malloc(sizeof *d);
+	d->c = 'G';
+
+	first->next = a;
+	a->next = e;
+	e->next = c;
+	c->next = d;
+	d->next = NULL;
+
+	first->prev = NULL;
+	a->prev = first;
+	e->prev = a;
+	c->prev = e;
+	d->prev = c;
+
+	for (i = 0; i < iterate_times; ++i) {
+		n = first, next = n->next;
+		while (n) {
+			sierpinski_triangle_iterate(n);
+			n = next;
+			if (n)
+				next = n->next;
+		}
+	}
+}
 
 static void update_elapsed(void)
 {
@@ -590,25 +884,10 @@ static void update_elapsed(void)
 static void sig_process(int sig)
 {
 	puts("\nplease use closing button of window to quit instead of <ctrl-c>");
+	fflush(stdout);
 }
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
-	if (argc != 2) {
-		puts("Usage: ./animation <iterate_number>");
-		return SDL_APP_FAILURE;
-	}
-
-#ifdef KOCHSNOWFLAKE
-	koch_snowflake_construct(atoi(argv[1]));
-#elif FRACTALPLANT
-	fractal_plant_construct(atoi(argv[1]));
-#elif PROBABILISTIC
-	probabilistic_construct(atoi(argv[1]));
-#endif
-
-	/* print(); */
-	/* return SDL_APP_SUCCESS; */
-
 	SDL_SetAppMetadata("dcr's practice", "1.0", "com.practice.dcr");
 
 	if (!SDL_Init(SDL_INIT_VIDEO))
@@ -624,8 +903,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
 	signal(SIGINT, sig_process);
 
-	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
-	SDL_RenderClear(renderer);
+	clean_screen();
 
 	last_tick = SDL_GetTicks();
 	return SDL_APP_CONTINUE;
@@ -641,33 +919,79 @@ create_error:
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
-	if (event->type == SDL_EVENT_QUIT ||
-	    (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE))
+	switch (event->type) {
+	case SDL_EVENT_QUIT:
+		puts("quit window");
+		fflush(stdout);
 		return SDL_APP_SUCCESS;
+	case SDL_EVENT_KEY_DOWN:
+		switch (event->key.key) {
+		case SDLK_ESCAPE:
+			puts("quit window");
+			fflush(stdout);
+			return SDL_APP_SUCCESS;
+		case SDLK_1:
+			puts("koch snowflake animation");
+			fflush(stdout);
+			koch_snowflake_construct();
+			break;
+		case SDLK_2:
+			puts("fractl plant animation");
+			fflush(stdout);
+			fractal_plant_construct();
+			break;
+		case SDLK_3:
+			puts("probabilistic animation");
+			fflush(stdout);
+			probabilistic_construct();
+			break;
+		case SDLK_4:
+			puts("sierpinski triangle");
+			fflush(stdout);
+			sierpinski_triangle_construct();
+			break;
+		case SDLK_B:
+			puts("starfield animation");
+			fflush(stdout);
+			starfield_construct();
+			break;
+		case SDLK_C:
+			puts("clean screen");
+			fflush(stdout);
+			clean_screen();
+			break;
+		}
+		break;
+	}
 	return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
 	update_elapsed();
-	if (is_complete) {
-		SDL_RenderTexture(renderer, screen, NULL, &rect);
-	} else {
-#ifdef KOCHSNOWFLAKE
-		if (koch_snowflake_draw()) {
-#elif FRACTALPLANT
-		if (fractal_plant_draw()) {
-#elif PROBABILISTIC
-		if (probabilistic_draw()) {
-#endif
-			is_complete = true;
-			screen = SDL_CreateTextureFromSurface(renderer, SDL_RenderReadPixels(renderer, NULL));
-			rect.x = 0.;
-			rect.y = 0.;
-			rect.w = (float)WINDOW_WIDTH;
-			rect.h = (float)WINDOW_HEIGHT;
-			puts("animation is completed");
+
+	if (show_bg)
+		starfield_show();
+	else {
+		switch (run_class) {
+		case 1:
+			is_completed = koch_snowflake_draw(); break;
+		case 2:
+			is_completed = fractal_plant_draw(); break;
+		case 3:
+			is_completed = probabilistic_draw(); break;
+		case 4:
+			is_completed = sierpinski_triangle_draw(); break;
+		default:
+			return SDL_APP_CONTINUE;
 		}
+	}
+
+	if (is_completed) {
+		run_class = 0;
+		is_completed = false;
+		puts("animation is completed");
+		fflush(stdout);
 	}
 
 	SDL_RenderPresent(renderer);

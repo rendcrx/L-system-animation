@@ -1,17 +1,7 @@
-# KOCHSNOWFLAKE | FRACTALPLANT | PROBABILISTIC
-CLASS = KOCHSNOWFLAKE
-
-CFLAGS = -Wall -Werror -std=c99 -pedantic -O2 -D$(CLASS)
+# CFLAGS = -Wall -Werror -std=c99 -pedantic -O2
+CFLAGS = -std=c99 -pedantic -O2
 LIBS = -lm -lSDL3
 TARGET = animation
-
-ifeq ($(CLASS), KOCHSNOWFLAKE)
-TIMES = 4
-else ifeq ($(CLASS), FRACTALPLANT)
-TIMES = 5
-else ifeq ($(CLASS), PROBABILISTIC)
-TIMES = 5
-endif
 
 all: $(TARGET)
 
@@ -19,11 +9,16 @@ $(TARGET): animation.c Makefile
 	$(CC) $(CFLAGS) -o $(TARGET) animation.c $(LIBS)
 
 run: $(TARGET)
-	@echo "==============$(CLASS)=================="
-	@echo "* default: $(TIMES) times"
-	@echo "* manual: ./animation <iterate_number>"
-	@echo "============================================="
-	@./$(TARGET) $(TIMES)
+	@echo "========================================"
+	@echo "* PRESS   1: koch snowflake animation"
+	@echo "* PRESS   2: fractl plant animation"
+	@echo "* PRESS   3: probabilistic animation"
+	@echo "* PRESS   4: sierpinski triangle animation"
+	@echo "* PRESS   b: starfield animation"
+	@echo "* PRESS   c: clean screen"
+	@echo "* PRESS ESC: quit window"
+	@echo "========================================"
+	@./$(TARGET)
 
 clean:
 	rm -f $(TARGET)
