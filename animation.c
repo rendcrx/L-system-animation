@@ -3,6 +3,10 @@
 #include <signal.h>
 #include <math.h>
 
+#ifdef PROBABILISTIC
+#include <time.h>
+#endif
+
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -38,6 +42,14 @@ static struct node *first;
 static float x, y = WINDOW_HEIGHT * 8 / 9;
 static int angle;
 #elif FRACTALPLANT
+static float x = WINDOW_WIDTH / 9, y = WINDOW_HEIGHT;
+static int angle = 60;
+#elif PROBABILISTIC
+static float x = WINDOW_WIDTH / 2, y = WINDOW_HEIGHT;
+static int angle = 90;
+#endif
+
+#if defined(FRACTALPLANT) || defined(PROBABILISTIC)
 struct state {
 	float x, y;
 	int angle;
@@ -47,9 +59,33 @@ struct {
 	int depth;
 	struct state data[];
 } *stack;
-static float x = WINDOW_WIDTH / 9, y = WINDOW_HEIGHT;
-static int angle = 60;
+
+static void stack_push()
+{
+	if (stack == NULL) {
+		stack = malloc(sizeof *stack + 8 * sizeof(struct state));
+		stack->pointer = 0;
+		stack->depth   = 8;
+	} else if (stack->pointer == stack->depth) {
+		stack = realloc(stack, (stack->depth << 1) * sizeof(struct state));
+		stack->depth <<= 1;
+	}
+	stack->data[stack->pointer].x = x;
+	stack->data[stack->pointer].y = y;
+	stack->data[stack->pointer].angle = angle;
+	stack->pointer ++;
+}
+
+static void stack_pop()
+{
+	stack->pointer --;
+	x     = stack->data[stack->pointer].x;
+	y     = stack->data[stack->pointer].y;
+	angle = stack->data[stack->pointer].angle;
+}
+
 #endif
+
 static float sum;
 static bool line_complete = true;
 static bool is_complete = false;
@@ -186,30 +222,6 @@ static void koch_snowflake_construct(int x)
 
 #elif FRACTALPLANT
 
-static void fractal_plant_push()
-{
-	if (stack == NULL) {
-		stack = malloc(sizeof *stack + 8 * sizeof(struct state));
-		stack->pointer = 0;
-		stack->depth   = 8;
-	} else if (stack->pointer == stack->depth) {
-		stack = realloc(stack, (stack->depth << 1) * sizeof(struct state));
-		stack->depth <<= 1;
-	}
-	stack->data[stack->pointer].x = x;
-	stack->data[stack->pointer].y = y;
-	stack->data[stack->pointer].angle = angle;
-	stack->pointer ++;
-}
-
-static void fractal_plant_pop()
-{
-	stack->pointer --;
-	x     = stack->data[stack->pointer].x;
-	y     = stack->data[stack->pointer].y;
-	angle = stack->data[stack->pointer].angle;
-}
-
 static int fractal_plant_draw()
 {
 	struct node *prev;
@@ -229,9 +241,9 @@ static int fractal_plant_draw()
 		case '-':
 			angle -= 25; break;
 		case '[':
-			fractal_plant_push(); break;
+			stack_push(); break;
 		case ']':
-			fractal_plant_pop(); break;
+			stack_pop(); break;
 		case 'X': break;
 		default:
 			return 1;
@@ -367,6 +379,153 @@ static void fractal_plant_construct(int x)
 	}
 }
 
+#elif PROBABILISTIC
+
+static int probabilistic_draw()
+{
+	struct node *prev;
+
+	SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+	if (!line_complete) {
+		draw_line();
+		return 0;
+	} else {
+		if (!first)
+			return 1;
+		switch (first->c) {
+		case 'F':
+			line_complete = false; draw_line(); break;
+		case '+':
+			angle += 25; break;
+		case '-':
+			angle -= 25; break;
+		case '[':
+			stack_push(); break;
+		case ']':
+			stack_pop(); break;
+		default:
+			return 1;
+		}
+		prev = first;
+		first = first->next;
+		free(prev);
+		return 0;
+	}
+}
+
+static void probabilistic_iterate(struct node *nn)
+{
+	struct node *a, *b, *c, *d, *e, *f, *g, *h,
+		    *i, *j, *k;
+
+	if (nn->c != 'F')
+		return;
+	a = malloc(sizeof(struct node));
+	b = malloc(sizeof(struct node));
+	c = malloc(sizeof(struct node));
+	d = malloc(sizeof(struct node));
+	e = malloc(sizeof(struct node));
+	f = malloc(sizeof(struct node));
+
+	a->c = 'F';
+	b->c = '[';
+	d->c = 'F';
+	e->c = ']';
+	f->c = 'F';
+
+	a->next = b;
+	b->next = c;
+	c->next = d;
+	d->next = e;
+	e->next = f;
+
+	a->prev = nn->prev;
+	b->prev = a;
+	c->prev = b;
+	d->prev = c;
+	e->prev = d;
+	f->prev = e;
+
+	switch (rand() % 3) {
+	case 0:
+		g = malloc(sizeof(struct node));
+		h = malloc(sizeof(struct node));
+		i = malloc(sizeof(struct node));
+		j = malloc(sizeof(struct node));
+		k = malloc(sizeof(struct node));
+
+		c->c = '+';
+		g->c = '[';
+		h->c = '-';
+		i->c = 'F';
+		j->c = ']';
+		k->c = 'F';
+
+		f->next = g;
+		g->next = h;
+		h->next = i;
+		i->next = j;
+		j->next = k;
+		k->next = nn->next;
+
+		g->prev = f;
+		h->prev = g;
+		i->prev = h;
+		j->prev = i;
+		k->prev = j;
+
+		if (nn->next)
+			nn->next->prev = k;
+		break;
+	case 1:
+		c->c = '+';
+
+		f->next = nn->next;
+
+		if (nn->next)
+			nn->next->prev = f;
+		break;
+	case 2:
+		c->c = '-';
+
+		f->next = nn->next;
+
+		if (nn->next)
+			nn->next->prev = f;
+		break;
+	}
+
+	if (nn->prev)
+		nn->prev->next = a;
+
+	free(nn);
+
+	if (!a->prev)
+		first = a;
+}
+
+static void probabilistic_construct(int x)
+{
+	int i;
+	struct node *n, *next;
+
+	srand(time(NULL));
+
+	first = malloc(sizeof *first);
+	first->c = 'F';
+	first->next = NULL;
+
+	for (i = 0; i < x; ++i) {
+		n = first, next = n->next;
+		while (n) {
+			probabilistic_iterate(n);
+			n = next;
+			if (n)
+				next = n->next;
+		}
+	}
+}
+
 #endif
 
 static void update_elapsed(void)
@@ -407,9 +566,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 	koch_snowflake_construct(atoi(argv[1]));
 #elif FRACTALPLANT
 	fractal_plant_construct(atoi(argv[1]));
+#elif PROBABILISTIC
+	probabilistic_construct(atoi(argv[1]));
 #endif
 
 	/* print(); */
+	/* return SDL_APP_SUCCESS; */
 
 	SDL_SetAppMetadata("dcr's practice", "1.0", "com.practice.dcr");
 
@@ -459,6 +621,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 		if (koch_snowflake_draw()) {
 #elif FRACTALPLANT
 		if (fractal_plant_draw()) {
+#elif PROBABILISTIC
+		if (probabilistic_draw()) {
 #endif
 			is_complete = true;
 			screen = SDL_CreateTextureFromSurface(renderer, SDL_RenderReadPixels(renderer, NULL));
