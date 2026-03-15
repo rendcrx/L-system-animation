@@ -1003,6 +1003,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
 	clean_screen();
 
+	puts("========================================");
+	puts("* PRESS   1: Koch snowflake animation");
+	puts("* PRESS   2: Fractl plant animation");
+	puts("* PRESS   3: Probabilistic animation");
+	puts("* PRESS   4: Sierpinski triangle animation");
+	puts("* PRESS   5: Dragon curve animation");
+	puts("* PRESS   b: Starfield animation");
+	puts("* PRESS   c: Clean screen");
+	puts("* PRESS ESC: Quit window");
+	puts("========================================");
+	fflush(stdout);
+
 	last_tick = SDL_GetTicks();
 	return SDL_APP_CONTINUE;
 
