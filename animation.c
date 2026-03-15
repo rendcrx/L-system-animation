@@ -26,9 +26,6 @@ static Uint64 during_ticks[TICK_AVERAGE];
 
 #define LINE_LEN 10
 
-static SDL_Texture *screen;
-static SDL_FRect    rect;
-
 struct node {
 	char c;
 	struct node *prev;
@@ -89,12 +86,12 @@ static bool is_completed;
 
 #define FLOAT_EQUAL(f1, f2) (fabs((f1)-(f2)) < 0.0001f)
 
-static void print(void)
-{
-	for (struct node *n = first; n != NULL; n = n->next)
-		putchar(n->c);
-	puts("");
-}
+/* static void print(void) */
+/* { */
+/* 	for (struct node *n = first; n != NULL; n = n->next) */
+/* 		putchar(n->c); */
+/* 	puts(""); */
+/* } */
 
 static bool show_bg;
 
@@ -858,6 +855,107 @@ static void sierpinski_triangle_construct()
 	}
 }
 
+static int dragon_curve_draw(void)
+{
+	struct node *prev;
+
+	if (!line_complete) {
+		draw_line();
+		return 0;
+	} else {
+		if (!first)
+			return 1;
+		switch (first->c) {
+		case 'F':
+		case 'G':
+			line_complete = false; draw_line(); break;
+		case '+':
+			angle += 90; break;
+		case '-':
+			angle -= 90; break;
+		default:
+			return 1;
+		}
+		prev = first;
+		first = first->next;
+		free(prev);
+		return 0;
+	}
+}
+
+
+static void dragon_curve_iterate(struct node *n)
+{
+	struct node *a, *b, *c;
+
+	if (n->c == '+' || n->c == '-')
+		return;
+
+	a = malloc(sizeof(struct node));
+	b = malloc(sizeof(struct node));
+	c = malloc(sizeof(struct node));
+
+	a->c = 'F';
+	b->c = n->c == 'F' ? '+' : '-';
+	c->c = 'G';
+	a->next = b;
+	b->next = c;
+	c->next = n->next;
+
+	a->prev = n->prev;
+	b->prev = a;
+	c->prev = b;
+
+	if (n->next)
+		n->next->prev = c;
+	if (n->prev)
+		n->prev->next = a;
+
+	free(n);
+
+	if (!a->prev)
+		first = a;
+}
+
+static void dragon_curve_construct()
+{
+	int i;
+	struct node *n, *next;
+
+	clean_screen();
+
+	show_bg = false;
+	iterate_times = 8;
+	run_class = 5;
+	x = WINDOW_WIDTH / 5, y = WINDOW_HEIGHT / 2;
+	angle = 0;
+	r = 255, g = 0, b = 255;
+	line_complete = true,  is_completed = false;
+
+	if (stack)
+		stack->pointer = 0;
+	while (first) {
+		next = first->next;
+		free(first);
+		first = next;
+	}
+
+	first = malloc(sizeof *first);
+	first->c = 'F';
+	first->next = NULL;
+	first->prev = NULL;
+
+	for (i = 0; i < iterate_times; ++i) {
+		n = first, next = n->next;
+		while (n) {
+			dragon_curve_iterate(n);
+			n = next;
+			if (n)
+				next = n->next;
+		}
+	}
+}
+
 static void update_elapsed(void)
 {
 	Uint64 now, sum;
@@ -883,7 +981,7 @@ static void update_elapsed(void)
 
 static void sig_process(int sig)
 {
-	puts("\nplease use closing button of window to quit instead of <ctrl-c>");
+	puts("\nPlease use closing button of window to quit instead of <ctrl-c>");
 	fflush(stdout);
 }
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
@@ -921,42 +1019,47 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
 	switch (event->type) {
 	case SDL_EVENT_QUIT:
-		puts("quit window");
+		puts("Quit window");
 		fflush(stdout);
 		return SDL_APP_SUCCESS;
 	case SDL_EVENT_KEY_DOWN:
 		switch (event->key.key) {
 		case SDLK_ESCAPE:
-			puts("quit window");
+			puts("Quit window");
 			fflush(stdout);
 			return SDL_APP_SUCCESS;
 		case SDLK_1:
-			puts("koch snowflake animation");
+			puts("Koch snowflake animation");
 			fflush(stdout);
 			koch_snowflake_construct();
 			break;
 		case SDLK_2:
-			puts("fractl plant animation");
+			puts("Fractl plant animation");
 			fflush(stdout);
 			fractal_plant_construct();
 			break;
 		case SDLK_3:
-			puts("probabilistic animation");
+			puts("Probabilistic animation");
 			fflush(stdout);
 			probabilistic_construct();
 			break;
 		case SDLK_4:
-			puts("sierpinski triangle");
+			puts("Sierpinski triangle");
 			fflush(stdout);
 			sierpinski_triangle_construct();
 			break;
+		case SDLK_5:
+			puts("Dragon curve triangle");
+			fflush(stdout);
+			dragon_curve_construct();
+			break;
 		case SDLK_B:
-			puts("starfield animation");
+			puts("Starfield animation");
 			fflush(stdout);
 			starfield_construct();
 			break;
 		case SDLK_C:
-			puts("clean screen");
+			puts("Clean screen");
 			fflush(stdout);
 			clean_screen();
 			break;
@@ -982,6 +1085,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 			is_completed = probabilistic_draw(); break;
 		case 4:
 			is_completed = sierpinski_triangle_draw(); break;
+		case 5:
+			is_completed = dragon_curve_draw(); break;
 		default:
 			return SDL_APP_CONTINUE;
 		}
@@ -990,7 +1095,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 	if (is_completed) {
 		run_class = 0;
 		is_completed = false;
-		puts("animation is completed");
+		puts("Animation is completed");
 		fflush(stdout);
 	}
 
