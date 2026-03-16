@@ -11,8 +11,27 @@
 
 #define PI 3.14159265354
 
+static char prompt[] =
+"====================================================\n"
+"             L-system Animation                     \n"
+"                                                    \n"
+"                                                    \n"
+"      PRESS   1: Koch snowflake animation           \n"
+"      PRESS   2: Fractl plant animation             \n"
+"      PRESS   3: Probabilistic animation            \n"
+"      PRESS   4: Sierpinski triangle animation      \n"
+"      PRESS   5: Dragon curve animation             \n"
+"      PRESS   b: Starfield animation                \n"
+"      PRESS   f: Toggle Fullscreen                  \n"
+"      PRESS   c: Clean screen                       \n"
+"      PRESS ESC: Quit window                        \n"
+"                                                    \n"
+"====================================================\n";
+
 static SDL_Window *window;
 static SDL_Renderer *renderer;
+static SDL_Surface *surface;
+static SDL_Texture *texture;
 
 #define TICK_AVERAGE 120
 
@@ -44,6 +63,28 @@ static float sum;
 
 static int iterate_times;
 static int run_class;
+
+static int times;
+static void command(const char *str)
+{
+	printf("==> %d. %s\n", ++times, str);
+	fflush(stdout);
+}
+
+static void callbackinfo(const char *str)
+{
+	int x = 0;
+	int t = times;
+	while (t) {
+		++x;
+		t /= 10;
+	}
+
+	for (int i = 0; i < x + 6; ++i)
+		printf(" ");
+	puts(str);
+	fflush(stdout);
+}
 
 typedef struct TinyAlloc {
 	uint8_t *p;
@@ -304,6 +345,7 @@ static void starfield_show(void)
 	}
 
 	SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+	/* SDL_SetRenderDrawColor(renderer, 200, 200, 255, 180); */
 	SDL_RenderPoints(renderer, points, SDL_arraysize(points));
 }
 
@@ -311,6 +353,7 @@ static void clean_screen(void)
 {
 	show_bg = false;
 	run_class = 0;
+	texture = NULL;
 	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 	SDL_RenderClear(renderer);
 	SDL_RenderPresent(renderer);
@@ -1127,17 +1170,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
 	clean_screen();
 
-	puts("========================================");
-	puts("* PRESS   1: Koch snowflake animation");
-	puts("* PRESS   2: Fractl plant animation");
-	puts("* PRESS   3: Probabilistic animation");
-	puts("* PRESS   4: Sierpinski triangle animation");
-	puts("* PRESS   5: Dragon curve animation");
-	puts("* PRESS   b: Starfield animation");
-	puts("* PRESS   f: Toggle Fullscreen");
-	puts("* PRESS   c: Clean screen");
-	puts("* PRESS ESC: Quit window");
-	puts("========================================");
+	puts(prompt);
 	fflush(stdout);
 
 	last_tick = SDL_GetTicks();
@@ -1156,52 +1189,52 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
 	switch (event->type) {
 	case SDL_EVENT_QUIT:
-		puts("Quit window");
+		command("Quit window");
 		fflush(stdout);
 		return SDL_APP_SUCCESS;
 	case SDL_EVENT_KEY_DOWN:
 		switch (event->key.key) {
 		case SDLK_ESCAPE:
-			puts("Quit window");
+			command("Quit window");
 			fflush(stdout);
 			return SDL_APP_SUCCESS;
 		case SDLK_1:
-			puts("Koch snowflake animation");
+			command("Koch snowflake animation");
 			fflush(stdout);
 			koch_snowflake_construct();
 			break;
 		case SDLK_2:
-			puts("Fractl plant animation");
+			command("Fractl plant animation");
 			fflush(stdout);
 			fractal_plant_construct();
 			break;
 		case SDLK_3:
-			puts("Probabilistic animation");
+			command("Probabilistic animation");
 			fflush(stdout);
 			probabilistic_construct();
 			break;
 		case SDLK_4:
-			puts("Sierpinski triangle");
+			command("Sierpinski triangle");
 			fflush(stdout);
 			sierpinski_triangle_construct();
 			break;
 		case SDLK_5:
-			puts("Dragon curve triangle");
+			command("Dragon curve triangle");
 			fflush(stdout);
 			dragon_curve_construct();
 			break;
 		case SDLK_B:
-			puts("Starfield animation");
+			command("Starfield animation");
 			fflush(stdout);
 			starfield_construct();
 			break;
 		case SDLK_C:
-			puts("Clean screen");
+			command("Clean screen");
 			fflush(stdout);
 			clean_screen();
 			break;
 		case SDLK_F:
-			puts("Toggle Fullscreen");
+			command("Toggle Fullscreen");
 			fflush(stdout);
 			clean_screen();
 			window_fullscreen = !window_fullscreen;
@@ -1218,7 +1251,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 {
 	update_elapsed();
 
-	if (show_bg)
+	if (texture) {
+		SDL_RenderTexture(renderer, texture, NULL, NULL);
+	} else if (show_bg)
 		starfield_show();
 	else {
 		switch (run_class) {
@@ -1238,9 +1273,11 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 	}
 
 	if (is_completed) {
+		surface = SDL_RenderReadPixels(renderer, NULL);
+		texture = SDL_CreateTextureFromSurface(renderer, surface);
 		run_class = 0;
 		is_completed = false;
-		puts("Animation is completed");
+		callbackinfo("Animation is completed");
 		fflush(stdout);
 	}
 
