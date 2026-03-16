@@ -51,7 +51,7 @@ struct {
 	struct state data[];
 } *stack;
 
-static void stack_push()
+static void stack_push(void)
 {
 	if (stack == NULL) {
 		stack = malloc(sizeof *stack + 8 * sizeof(struct state));
@@ -70,7 +70,7 @@ static void stack_push()
 	stack->pointer ++;
 }
 
-static void stack_pop()
+static void stack_pop(void)
 {
 	stack->pointer --;
 	x     = stack->data[stack->pointer].x;
@@ -114,8 +114,7 @@ static bool sdf_circle(float x, float y)
 	return diffx*diffx + diffy*diffy < RADIUS*RADIUS;
 }
 
-static void set_point_out_of_screen(i)
-	int i;
+static void set_point_out_of_screen(int i)
 {
 	points[i].x = -1.f;
 	points[i].y = -1.f;
@@ -187,7 +186,7 @@ static void starfield_show(void)
 	SDL_RenderPoints(renderer, points, SDL_arraysize(points));
 }
 
-static void clean_screen()
+static void clean_screen(void)
 {
 	show_bg = false;
 	run_class = 0;
@@ -296,7 +295,7 @@ static void koch_snowflake_iterate(struct node *n)
 	}
 }
 
-static void koch_snowflake_construct()
+static void koch_snowflake_construct(void)
 {
 	int i;
 	struct node *n, *next;
@@ -471,7 +470,7 @@ static void fractal_plant_iterate(struct node *nn)
 	}
 }
 
-static void fractal_plant_construct()
+static void fractal_plant_construct(void)
 {
 	int i;
 	struct node *n, *next;
@@ -647,7 +646,7 @@ static void probabilistic_iterate(struct node *nn)
 		first = a;
 }
 
-static void probabilistic_construct()
+static void probabilistic_construct(void)
 {
 	int i;
 	struct node *n, *next;
@@ -795,7 +794,7 @@ static void sierpinski_triangle_iterate(struct node *n)
 	}
 }
 
-static void sierpinski_triangle_construct()
+static void sierpinski_triangle_construct(void)
 {
 	int i;
 	struct node *n, *next;
@@ -917,7 +916,7 @@ static void dragon_curve_iterate(struct node *n)
 		first = a;
 }
 
-static void dragon_curve_construct()
+static void dragon_curve_construct(void)
 {
 	int i;
 	struct node *n, *next;
