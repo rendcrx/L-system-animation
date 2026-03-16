@@ -64,7 +64,7 @@ static int iterate_times;
 static int run_class;
 
 static int times;
-static void command(const char *str)
+static void commandinfo(const char *str)
 {
 	printf("==> %d. %s\n", ++times, str);
 	fflush(stdout);
@@ -1188,53 +1188,43 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
 	switch (event->type) {
 	case SDL_EVENT_QUIT:
-		command("Quit window");
-		fflush(stdout);
+		commandinfo("Quit window");
 		return SDL_APP_SUCCESS;
 	case SDL_EVENT_KEY_DOWN:
 		switch (event->key.key) {
 		case SDLK_ESCAPE:
-			command("Quit window");
-			fflush(stdout);
+			commandinfo("Quit window");
 			return SDL_APP_SUCCESS;
 		case SDLK_1:
-			command("Koch snowflake animation");
-			fflush(stdout);
+			commandinfo("Koch snowflake animation");
 			koch_snowflake_construct();
 			break;
 		case SDLK_2:
-			command("Fractl plant animation");
-			fflush(stdout);
+			commandinfo("Fractl plant animation");
 			fractal_plant_construct();
 			break;
 		case SDLK_3:
-			command("Probabilistic animation");
-			fflush(stdout);
+			commandinfo("Probabilistic animation");
 			probabilistic_construct();
 			break;
 		case SDLK_4:
-			command("Sierpinski triangle");
-			fflush(stdout);
+			commandinfo("Sierpinski triangle");
 			sierpinski_triangle_construct();
 			break;
 		case SDLK_5:
-			command("Dragon curve triangle");
-			fflush(stdout);
+			commandinfo("Dragon curve triangle");
 			dragon_curve_construct();
 			break;
 		case SDLK_B:
-			command("Starfield animation");
-			fflush(stdout);
+			commandinfo("Starfield animation");
 			starfield_construct();
 			break;
 		case SDLK_C:
-			command("Clean screen");
-			fflush(stdout);
+			commandinfo("Clean screen");
 			clean_screen();
 			break;
 		case SDLK_F:
-			command("Toggle Fullscreen");
-			fflush(stdout);
+			commandinfo("Toggle Fullscreen");
 			clean_screen();
 			window_fullscreen = !window_fullscreen;
 			SDL_SetWindowFullscreen(window, window_fullscreen);
