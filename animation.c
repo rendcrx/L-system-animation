@@ -24,6 +24,10 @@ static Uint64 during_ticks[TICK_AVERAGE];
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 768
 
+static int window_width = WINDOW_WIDTH;
+static int window_height = WINDOW_HEIGHT;
+static bool window_fullscreen = false;
+
 #define LINE_LEN 10
 
 struct node {
@@ -40,6 +44,121 @@ static float sum;
 
 static int iterate_times;
 static int run_class;
+
+typedef struct TinyAlloc {
+	uint8_t *p;
+	uint8_t *bufend;
+	struct TinyAlloc *next;
+	unsigned nb_allocs;
+	unsigned size;
+	union {
+		uint8_t buffer[1];
+		size_t _aligner_;
+	};
+} TinyAlloc;
+
+static TinyAlloc *mempool;
+
+typedef struct tal_header_t {
+	size_t size;
+} tal_header_t;
+
+#define TAL_ALIGN(size) \
+	(((size) + (sizeof (size_t) - 1)) & ~(sizeof (size_t) - 1))
+
+static TinyAlloc *tal_new(TinyAlloc **pal, unsigned size)
+{
+	TinyAlloc *al = malloc(sizeof(TinyAlloc) - sizeof (size_t) + size);
+	al->p = al->buffer;
+	al->bufend = al->buffer + size;
+	al->nb_allocs = 0;
+	al->next = *pal, *pal = al;
+	al->size = al->next ? al->next->size : size;
+	return al;
+}
+
+static void tal_delete(TinyAlloc **pal)
+{
+	TinyAlloc *al = *pal, *next;
+
+tail_call:
+	next = al->next;
+	free(al);
+	al = next;
+	if (al)
+		goto tail_call;
+	*pal = al;
+}
+
+static void tal_free_impl(TinyAlloc **pal, void *p)
+{
+	TinyAlloc *al, **top = pal;
+	tal_header_t *header;
+
+	if (!p)
+		return;
+	header = (tal_header_t *)p - 1;
+	al = *pal;
+	while ((uint8_t*)p < al->buffer || (uint8_t*)p > al->bufend)
+		al = *(pal = &al->next);
+	if (0 == --al->nb_allocs) {
+		*pal = al->next;
+		if ((al->bufend - al->buffer) > al->size) {
+			free(al);
+		} else {
+			al->p = al->buffer;
+			al->next = *top, *top = al;
+		}
+	} else if ((uint8_t*)p + header->size == al->p) {
+		al->p = (uint8_t*)header;
+	}
+}
+
+static void *tal_realloc_impl(TinyAlloc **pal, void *p, unsigned size)
+{
+	tal_header_t *header;
+	void *ret;
+	unsigned adj_size = TAL_ALIGN(size) + sizeof(tal_header_t);
+	TinyAlloc *al = *pal;
+
+	if (p) {
+		while ((uint8_t*)p < al->buffer || (uint8_t*)p > al->bufend)
+			al = al->next;
+		header = (tal_header_t *)p - 1;
+		if ((uint8_t*)p + header->size == al->p)
+			al->p = (uint8_t*)header;
+		if (al->p + adj_size > al->bufend) {
+			ret = tal_realloc_impl(pal, 0, size);
+			memcpy(ret, p, header->size);
+			tal_free_impl(pal, p);
+			return ret;
+		} else if (al->p != (uint8_t*)header) {
+			memcpy((tal_header_t*)al->p + 1, p, header->size);
+		}
+	} else {
+		while (al->p + adj_size > al->bufend) {
+			al = al->next;
+			if (!al) {
+				unsigned new_size = (*pal)->size;
+				if (adj_size > new_size) {
+					new_size = adj_size;
+				}
+				al = tal_new(pal, new_size);
+				break;
+			}
+		}
+		al->nb_allocs++;
+	}
+	header = (tal_header_t *)al->p;
+	header->size = adj_size - sizeof(tal_header_t);
+	al->p += adj_size;
+	ret = header + 1;
+	return ret;
+}
+
+#define malloc(size) tal_realloc_impl(&mempool, NULL, (size))
+#define realloc(ptr, size) tal_realloc_impl(&mempool, (ptr), (size))
+#define free(ptr) tal_free_impl(&mempool, (ptr))
 
 struct state {
 	float x, y;
@@ -96,8 +215,8 @@ static bool is_completed;
 static bool show_bg;
 
 #define NUM_POINTS 200
-#define CENTERX (WINDOW_WIDTH  / 2)
-#define CENTERY (WINDOW_HEIGHT / 2)
+#define CENTERX (window_width  / 2)
+#define CENTERY (window_height / 2)
 #define RADIUS 20
 
 #define random_float(min, max) (((float)rand()/(float)RAND_MAX) * ((max)-(min)) + (min))
@@ -116,8 +235,10 @@ static bool sdf_circle(float x, float y)
 
 static void set_point_out_of_screen(int i)
 {
-	points[i].x = -1.f;
-	points[i].y = -1.f;
+	/* points[i].x = -1.f; */
+	/* points[i].y = -1.f; */
+	points[i].x = window_width << 1;
+	points[i].y = window_height << 1;
 }
 
 static void set_point_in_circle(int i)
@@ -177,8 +298,8 @@ static void starfield_show(void)
 
 	for (i = 0; i < SDL_arraysize(points); ++i) {
 		update_point_position(i);
-		if (points[i].x >= WINDOW_WIDTH || points[i].x < 0.f ||
-		    points[i].y >= WINDOW_HEIGHT || points[i].y <= 0.f)
+		if (points[i].x >= window_width || points[i].x < 0.f ||
+		    points[i].y >= window_height || points[i].y <= 0.f)
 			set_point_in_circle(i);
 	}
 
@@ -305,7 +426,7 @@ static void koch_snowflake_construct(void)
 	show_bg = false;
 	iterate_times = 4;
 	run_class = 1;
-	x = 0, y = WINDOW_HEIGHT * 8 / 9;
+	x = 0, y = window_height * 8 / 9;
 	angle = 0;
 	r = 255, g = 255, b = 255;
 	line_complete = true,  is_completed = false;
@@ -480,7 +601,7 @@ static void fractal_plant_construct(void)
 	show_bg = false;
 	iterate_times = 5;
 	run_class = 2;
-	x = WINDOW_WIDTH / 9, y = WINDOW_HEIGHT;
+	x = window_width / 9, y = window_height;
 	angle = 60;
 	r = 0, g = 200, b = 0;
 	line_complete = true,  is_completed = false;
@@ -656,7 +777,7 @@ static void probabilistic_construct(void)
 	show_bg = false;
 	iterate_times = 5;
 	run_class = 3;
-	x = WINDOW_WIDTH / 2, y = WINDOW_HEIGHT;
+	x = window_width / 2, y = window_height;
 	angle = 90;
 	r = 255, g = 165, b = 0;
 	line_complete = true,  is_completed = false;
@@ -805,7 +926,7 @@ static void sierpinski_triangle_construct(void)
 	show_bg = false;
 	iterate_times = 6;
 	run_class = 4;
-	x = WINDOW_WIDTH / 2, y = WINDOW_HEIGHT;
+	x = window_width / 2, y = window_height;
 	angle = 120;
 	r = 0, g = 165, b = 165;
 	line_complete = true,  is_completed = false;
@@ -926,7 +1047,7 @@ static void dragon_curve_construct(void)
 	show_bg = false;
 	iterate_times = 8;
 	run_class = 5;
-	x = WINDOW_WIDTH / 5, y = WINDOW_HEIGHT / 2;
+	x = window_width / 5, y = window_height / 2;
 	angle = 0;
 	r = 255, g = 0, b = 255;
 	line_complete = true,  is_completed = false;
@@ -990,6 +1111,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 	if (!SDL_Init(SDL_INIT_VIDEO))
 		goto init_error;
 
+	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
+
 	if (!SDL_CreateWindowAndRenderer("my starfield animation",
 					 WINDOW_WIDTH, WINDOW_HEIGHT,
 					 SDL_WINDOW_RESIZABLE,
@@ -997,6 +1120,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 		goto create_error;
 
 	SDL_SetRenderLogicalPresentation(renderer, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+
+	tal_new(&mempool, 1024);
 
 	signal(SIGINT, sig_process);
 
@@ -1009,6 +1134,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 	puts("* PRESS   4: Sierpinski triangle animation");
 	puts("* PRESS   5: Dragon curve animation");
 	puts("* PRESS   b: Starfield animation");
+	puts("* PRESS   f: Toggle Fullscreen");
 	puts("* PRESS   c: Clean screen");
 	puts("* PRESS ESC: Quit window");
 	puts("========================================");
@@ -1074,6 +1200,14 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 			fflush(stdout);
 			clean_screen();
 			break;
+		case SDLK_F:
+			puts("Toggle Fullscreen");
+			fflush(stdout);
+			clean_screen();
+			window_fullscreen = !window_fullscreen;
+			SDL_SetWindowFullscreen(window, window_fullscreen);
+			/* SDL_GetRenderOutputSize(renderer, &window_width, &window_height); */
+			break;
 		}
 		break;
 	}
@@ -1115,4 +1249,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 	return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void *appstate, SDL_AppResult result) {}
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
+	tal_delete(&mempool);
+}

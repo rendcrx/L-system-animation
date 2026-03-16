@@ -1,4 +1,4 @@
-CFLAGS = -Wall -Werror -std=c99 -pedantic -O2
+CFLAGS = -Wall -Werror -std=c11 -pedantic -O2
 LIBS   = -lm -lSDL3
 TARGET = animation
 
