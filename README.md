@@ -2,4 +2,6 @@
 
 https://en.wikipedia.org/wiki/L-system
 
-![fractl plant](./fractl plant.png)
+<picture>
+  <img alt="fractl plant" src="/fractl plant.png">
+</picture>
