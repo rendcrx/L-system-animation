@@ -8,7 +8,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#define PI 3.14159265354
+#define PI 3.1415926535897932384626433832795028841971693993751
 
 static char prompt[] =
 "====================================================\n"
@@ -36,7 +36,7 @@ static SDL_Texture *texture;
 
 static int tick_idx, items;
 static Uint64 last_tick;
-static float elapsed;
+static double elapsed;
 static Uint64 during_ticks[TICK_AVERAGE];
 
 #define WINDOW_WIDTH 1024
@@ -55,10 +55,10 @@ struct node {
 };
 
 static struct node *first;
-static float x, y;
+static double x, y;
 static int angle;
 static int r, g, b;
-static float sum;
+static double sum;
 
 static int iterate_times;
 static int run_class;
@@ -201,7 +201,7 @@ static void *tal_realloc_impl(TinyAlloc **pal, void *p, unsigned size)
 #define free(ptr) tal_free_impl(&mempool, (ptr))
 
 struct state {
-	float x, y;
+	double x, y;
 	int angle, r, g, b;
 };
 struct {
@@ -243,7 +243,7 @@ static void stack_pop(void)
 static bool line_complete;
 static bool is_completed;
 
-#define FLOAT_EQUAL(f1, f2) (fabs((f1)-(f2)) < 0.0001f)
+#define double_EQUAL(f1, f2) (fabs((f1)-(f2)) < 0.0001)
 
 /* static void print(void) */
 /* { */
@@ -259,32 +259,32 @@ static bool show_bg;
 #define CENTERY (window_height / 2)
 #define RADIUS 20
 
-#define random_float(min, max) (((float)rand()/(float)RAND_MAX) * ((max)-(min)) + (min))
+#define random_double(min, max) (((double)rand()/(double)RAND_MAX) * ((max)-(min)) + (min))
 
 static SDL_FPoint points[NUM_POINTS];
-static float point_directionx[NUM_POINTS];
-static float point_directiony[NUM_POINTS];
+static double point_directionx[NUM_POINTS];
+static double point_directiony[NUM_POINTS];
 
-static bool sdf_circle(float x, float y)
+static bool sdf_circle(double x, double y)
 {
-	float diffx = x - (float)CENTERX;
-	float diffy = y - (float)CENTERY;
+	double diffx = x - (double)CENTERX;
+	double diffy = y - (double)CENTERY;
 
 	return diffx*diffx + diffy*diffy < RADIUS*RADIUS;
 }
 
 static void set_point_out_of_screen(int i)
 {
-	/* points[i].x = -1.f; */
-	/* points[i].y = -1.f; */
+	/* points[i].x = -1; */
+	/* points[i].y = -1; */
 	points[i].x = window_width << 1;
 	points[i].y = window_height << 1;
 }
 
 static void set_point_in_circle(int i)
 {
-	float x;
-	float y;
+	double x;
+	double y;
 
 	if (rand() % 800 != 0) {
 		set_point_out_of_screen(i);
@@ -292,30 +292,30 @@ static void set_point_in_circle(int i)
 	}
 
 retry:
-	x = random_float(CENTERX - RADIUS, CENTERX + RADIUS);
-	y = random_float(CENTERY - RADIUS, CENTERY + RADIUS);
+	x = random_double(CENTERX - RADIUS, CENTERX + RADIUS);
+	y = random_double(CENTERY - RADIUS, CENTERY + RADIUS);
 	if (!sdf_circle(x, y))
 		goto retry;
 
 	points[i].x = x;
 	points[i].y = y;
 
-	point_directionx[i] = (x - CENTERX) > 0.f ? random_float(0.f, 1.f) : -random_float(0.f, 1.f);
-	point_directiony[i] = (y - CENTERY) > 0.f ? random_float(0.f, 1.f) : -random_float(0.f, 1.f);
+	point_directionx[i] = (x - CENTERX) > 0 ? random_double(0., 1.) : -random_double(0., 1.);
+	point_directiony[i] = (y - CENTERY) > 0 ? random_double(0., 1.) : -random_double(0., 1.);
 }
 
-static float point_distance(int i)
+static double point_distance(int i)
 {
-	float a = points[i].x-(float)CENTERX;
-	float b = points[i].y-(float)CENTERY;
+	double a = points[i].x-(double)CENTERX;
+	double b = points[i].y-(double)CENTERY;
 	return sqrt(a*a+b*b);
 }
 
 static void update_point_position(int i)
 {
-	const float distance = elapsed * point_distance(i) / 10.f;
-	points[i].x += distance * (distance > 1.f ? distance : 1.f) * point_directionx[i];
-	points[i].y += distance * (distance > 1.f ? distance : 1.f) * point_directiony[i];
+	const double distance = elapsed * point_distance(i) / 10;
+	points[i].x += distance * (distance > 1 ? distance : 1.) * point_directionx[i];
+	points[i].y += distance * (distance > 1 ? distance : 1.) * point_directiony[i];
 }
 
 static void starfield_construct(void)
@@ -338,8 +338,8 @@ static void starfield_show(void)
 
 	for (i = 0; i < SDL_arraysize(points); ++i) {
 		update_point_position(i);
-		if (points[i].x >= window_width || points[i].x < 0.f ||
-		    points[i].y >= window_height || points[i].y <= 0.f)
+		if (points[i].x >= window_width || points[i].x < 0 ||
+		    points[i].y >= window_height || points[i].y <= 0)
 			set_point_in_circle(i);
 	}
 
@@ -360,14 +360,26 @@ static void clean_screen(void)
 
 static void draw_line(void)
 {
-	if (sum >= 1.f) {
+	static double tx, ty;
+	double rad, nx, ny;
+
+	rad = (double)angle / 180. * PI;
+	if (sum > 1) {
 		line_complete = true;
-		sum = 0.f;
+		sum = 0;
 		return;
 	}
-	float rad = angle / 180.f * PI;
-	float nx =  x + LINE_LEN * elapsed * cosf(rad);
-	float ny =  y - LINE_LEN * elapsed * sinf(rad);
+	if (double_EQUAL(sum, 0)) {
+		tx =  x + LINE_LEN * cos(rad);
+		ty =  y - LINE_LEN * sin(rad);
+	}
+	nx =  x + LINE_LEN * elapsed * cos(rad);
+	ny =  y - LINE_LEN * elapsed * sin(rad);
+
+	if ((nx > x && nx > tx) || (nx < x && nx < tx))
+		nx = tx;
+	if ((ny > y && ny > ty) || (ny < y && ny < ty))
+		ny = ty;
 
 	SDL_SetRenderDrawColor(renderer, r, g, b, SDL_ALPHA_OPAQUE);
 
@@ -674,7 +686,7 @@ static void fractal_plant_construct(void)
 
 static void update_color(void)
 {
-	static float sum = 0;
+	static double sum = 0;
 	sum += elapsed;
 
 	if (sum > 0.7f) {
@@ -689,7 +701,7 @@ static void update_color(void)
 		if (b > 255)
 			b = 255;
 
-		sum = 0.f;
+		sum = 0;
 	}
 }
 
@@ -1121,7 +1133,7 @@ static void dragon_curve_construct(void)
 static void update_elapsed(void)
 {
 	Uint64 now, sum;
-	float average;
+	double average;
 	int i;
 
 	sum = 0;
@@ -1135,10 +1147,10 @@ static void update_elapsed(void)
 	for (i = 0; i < TICK_AVERAGE; ++i)
 		sum += during_ticks[i];
 
-	average = sum / (float)items;
+	average = sum / (double)items;
 	tick_idx = (tick_idx + 1) % TICK_AVERAGE;
 
-	elapsed = average / 30.f;
+	elapsed = average / 30;
 }
 
 static void sig_process(int sig)
