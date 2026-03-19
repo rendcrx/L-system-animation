@@ -376,10 +376,8 @@ static void draw_line(void)
 	nx =  x + LINE_LEN * elapsed * cos(rad);
 	ny =  y - LINE_LEN * elapsed * sin(rad);
 
-	if ((nx > x && nx > tx) || (nx < x && nx < tx))
-		nx = tx;
-	if ((ny > y && ny > ty) || (ny < y && ny < ty))
-		ny = ty;
+	nx = (nx > x && nx > tx) || (nx < x && nx < tx) ? tx : nx;
+	ny = (ny > y && ny > ty) || (ny < y && ny < ty) ? ty : ny;
 
 	SDL_SetRenderDrawColor(renderer, r, g, b, SDL_ALPHA_OPAQUE);
 
@@ -980,7 +978,7 @@ static void sierpinski_triangle_construct(void)
 	show_bg = false;
 	iterate_times = 6;
 	run_class = 4;
-	x = window_width / 2, y = window_height;
+	x = window_width / 2, y = window_height * 8 / 9;
 	angle = 120;
 	r = 0, g = 165, b = 165;
 	line_complete = true,  is_completed = false;
