@@ -207,8 +207,7 @@ struct state {
 struct {
 	int pointer;
 	int depth;
-	struct state data[];
-} *stack;
+	struct state data[]; } *stack;
 
 static void stack_push(void)
 {
@@ -1227,6 +1226,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 			break;
 		case SDLK_B:
 			commandinfo("Starfield animation");
+			clean_screen();
 			starfield_construct();
 			break;
 		case SDLK_C:
