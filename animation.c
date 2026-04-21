@@ -1,3 +1,4 @@
+
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -204,10 +205,12 @@ struct state {
 	double x, y;
 	int angle, r, g, b;
 };
+
 struct {
 	int pointer;
 	int depth;
-	struct state data[]; } *stack;
+	struct state data[];
+} *stack;
 
 static void stack_push(void)
 {
